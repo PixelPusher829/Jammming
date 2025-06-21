@@ -1,26 +1,24 @@
-*, *::before, *::after {
-  box-sizing: border-box;
+.contents{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+
 }
 
-* {
-  margin: 0;
-  padding: 0;
+.contents div{
+    background: rgba(24, 3, 46, 0.664);;
+    padding: 2rem;
+    border-radius: 1rem;
+    min-height: 40rem;
+    backdrop-filter: blur(25px);
+    border: 1px solid rgba(255, 255, 255, 0.188);
 }
 
-img, picture {
-  max-width: 100%;
-  display: block;
-}
 
-h1, h2, h3, h4 {
-  text-wrap: balance;
-}
-
-p {
-  text-wrap: pretty;
-}
-
-input, button, textarea, select {
-  font-family: inherit;
-  font-size: inherit;
+form .fi-br-search {
+	position: relative;
+	padding: 0;
+	left: 1.2rem;
+	top: 1.3rem;
+	color: var(--primary-color);
 }
