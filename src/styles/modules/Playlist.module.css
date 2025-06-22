@@ -1,15 +1,40 @@
-.playlist input{
-    background-color: transparent;
-    margin-top: 1rem;
-    width: 100%;
-    padding: 0.8rem;
-    caret-color: white;
-    transition: 400ms;
-    border: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.616);
-    outline: none;
-    &:focus{
-        background-color: rgba(255, 255, 255, 0.053);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.923);
-    }
+.playlist {
+	&>button {
+		margin-top: 0.8rem;
+		padding: 0.6rem 1.5rem;
+		background: var(--primary-color);
+		border-radius: 2rem;
+		transition: 400ms;
+		border: none;
+		cursor: pointer;
+		color: white;
+		&:hover {
+			background: var(--accent-color);
+            transition: 400ms;
+		}
+	}
+
+	& input {
+		background-color: transparent;
+		width: 100%;
+		padding: 0.5rem 0rem;
+		caret-color: white;
+		color: white;
+        margin-bottom: 1rem;
+		transition: 400ms;
+		border: none;
+		font-size: 24px;
+		font-weight: 600;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.616);
+		outline: none;
+
+		&::placeholder {
+			color: rgba(255, 255, 255, 0.359);
+		}
+		&:focus {
+			background-color: rgba(255, 255, 255, 0.053);
+			padding: 0.5rem 1rem;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.923);
+		}
+	}
 }

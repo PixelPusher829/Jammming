@@ -1,10 +1,22 @@
-// import styles from "../styles/modules/Tracklist.modules.css";
-function Tracklist() {
-    return (
-        <div>
-            <h2>Results</h2>
-        </div>
-    );
+import Track from "./Track";
+
+function Tracklist({tracks, togglePlaylist}) {
+	return (
+		<div>
+			{tracks
+				.filter((track) => !track.isInPlaylist)
+				.map((track) => (
+					<Track
+						id={track.id}
+						title={track.title}
+						artist={track.artist}
+						album={track.album}
+						isInPlaylist={track.isInPlaylist}
+						togglePlaylist={togglePlaylist}
+					/>
+				))}
+		</div>
+	);
 }
 
 export default Tracklist;

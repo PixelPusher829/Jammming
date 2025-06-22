@@ -1,24 +1,23 @@
-.contents{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-
+.contents {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 2rem;
 }
 
-.contents div{
-    background: rgba(24, 3, 46, 0.664);;
-    padding: 2rem;
-    border-radius: 1rem;
-    min-height: 40rem;
-    backdrop-filter: blur(25px);
-    border: 1px solid rgba(255, 255, 255, 0.188);
+.contents > div {
+	background: rgba(24, 3, 46, 0.664);
+	padding: 2rem;
+	border-radius: 1rem;
+	min-height: 32rem;
+	backdrop-filter: blur(25px);
+	border: 1px solid rgba(255, 255, 255, 0.188);
 }
 
-
-form .fi-br-search {
-	position: relative;
-	padding: 0;
-	left: 1.2rem;
-	top: 1.3rem;
-	color: var(--primary-color);
+@media screen and (max-width: 850px) {
+	.contents {
+		grid-template-columns: 1fr;
+		& > div {
+			min-height: auto;
+		}
+	}
 }

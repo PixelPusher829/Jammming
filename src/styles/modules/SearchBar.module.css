@@ -1,18 +1,36 @@
-.searchbar  {
+
+
+.searchbar {
 	display: flex;
 	justify-content: center;
 	width: auto;
 	margin: 5rem auto;
 	position: relative;
+	& button {
+		position: relative;
+		left: 0.8rem;
+		top: 0.2rem;
+		z-index: 2;
+		padding: 0.8rem;
+		background: none;;
+		border: none;
+		cursor: pointer;
+	}
+	& input {
+		padding: 1rem 1.5rem 1rem 3.8rem;
+		border-radius: 2rem;
+		margin-left: -2.3rem;
+		min-width: 25rem;
+		display: inline-block;
+		transition: 400ms ease-in-out;
+		outline: transparent 25px solid;
+		&:focus {
+			outline: var(--accent-color) solid;
+			transition: 700ms ease;
+		}
+	}
 }
 
-.searchbar input {
-	padding: 1rem 1.5rem 1rem 3rem;
-	border-radius: 2rem;
-	margin-left: -1.1rem;
-	min-width: 25rem;
-	display: inline-block;
-	&:focus {
-		outline: var(--accent-color) 2px solid;
-	}
+form .icon {
+	color: var(--accent-color);
 }
