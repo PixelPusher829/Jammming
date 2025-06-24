@@ -1,16 +1,26 @@
-import React, {useState} from "react";
+import {useState} from "react";
 import styles from "../styles/modules/Playlist.module.css";
 import Track from "./Track";
 
 function Playlist({tracks, togglePlaylist}) {
 	const [playlistName, setPlaylistName] = useState("");
+	const [playlist, setPlaylist] = useState([]);
 
 	const tracksInPlaylist = tracks.filter((track) => track.isInPlaylist);
 	const hasTracksInPlaylist = tracksInPlaylist.length > 0;
 
+	function handleSaveToSpotify(e) {
+		e.preventDefault();
+		setPlaylist((prev) => [
+			...prev,
+			tracks.filter((track) => track.isInPlaylist),
+			console.log(playlist, playlistName),
+		]);
+	}
+
 	return (
 		<div>
-			<form className={styles.playlist}>
+			<form className={styles.playlist} onSubmit={handleSaveToSpotify}>
 				<input
 					type="text"
 					onChange={(e) => setPlaylistName(e.target.value)}
@@ -22,8 +32,8 @@ function Playlist({tracks, togglePlaylist}) {
 					<>
 						{tracksInPlaylist.map((track) => (
 							<Track
-								key={track.id}
-								id={track.id}
+								uri={track.uri}
+								key={track.uri}
 								title={track.title}
 								artist={track.artist}
 								album={track.album}
@@ -31,7 +41,7 @@ function Playlist({tracks, togglePlaylist}) {
 								togglePlaylist={togglePlaylist}
 							/>
 						))}
-						<button>Save to Spotify</button>
+						<button type="submit">Save to Spotify</button>
 					</>
 				) : (
 					<p>No tracks in the playlist</p>

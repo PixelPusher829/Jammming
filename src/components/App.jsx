@@ -7,21 +7,21 @@ import SearchResults from "./SearchResults";
 function App() {
 	const [tracks, setTracks] = useState([
 		{
-			id: 1,
+			uri: 1,
 			title: "Hotel California",
 			artist: "Eagles",
 			album: "Hotel California",
 			isInPlaylist: false,
 		},
 		{
-			id: 2,
+			uri: 2,
 			title: "Stairway to Heaven",
 			artist: "Led Zeppelin",
 			album: "Led Zeppelin IV",
 			isInPlaylist: false,
 		},
 		{
-			id: 3,
+			uri: 3,
 			title: "Imagine",
 			artist: "John Lennon",
 			album: "Imagine",
@@ -29,10 +29,10 @@ function App() {
 		},
 	]);
 
-	const togglePlaylist = (id) => {
+	const togglePlaylist = (uri) => {
 		setTracks(
 			tracks.map((prev) => {
-				if (prev.id == id) {
+				if (prev.uri == uri) {
 					return {...prev, isInPlaylist: !prev.isInPlaylist};
 				}
 				return prev;
@@ -51,7 +51,7 @@ function App() {
 				<SearchBar />
 				<div className="contents">
 					<SearchResults tracks={tracks} togglePlaylist={togglePlaylist} />
-					<Playlist tracks={tracks} togglePlaylist={togglePlaylist} />
+					<Playlist tracks={tracks} togglePlaylist={togglePlaylist}/>
 				</div>
 			</main>
 		</>
