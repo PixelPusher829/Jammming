@@ -32,10 +32,10 @@ function Playlist({tracks, togglePlaylist}) {
 					<>
 						{tracksInPlaylist.map((track) => (
 							<Track
-								uri={track.uri}
-								key={track.uri}
-								title={track.title}
-								artist={track.artist}
+								id={track.id}
+								key={track.id}
+								name={track.name}
+								artists={track.artists}
 								album={track.album}
 								isInPlaylist={track.isInPlaylist}
 								togglePlaylist={togglePlaylist}

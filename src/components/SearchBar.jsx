@@ -2,11 +2,17 @@
 import styles from "../styles/modules/SearchBar.module.css";
 import {useState} from "react";
 
-function SearchBar() {
+function SearchBar({handleSearch}) {
 	const [searchTerm, setSearchTerm] = useState("");
 
+	function handleSubmit(e){
+		e.preventDefault();
+		handleSearch(searchTerm);
+	}
+
+
 	return (
-		<form className={styles.searchbar}>
+		<form className={styles.searchbar} onSubmit={handleSubmit}>
 			<button type="submit">
 				<i className={`fi fi-br-search ${styles.icon}`}></i>
 			</button>

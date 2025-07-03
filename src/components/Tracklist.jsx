@@ -7,10 +7,10 @@ function Tracklist({tracks, togglePlaylist}) {
 				.filter((track) => !track.isInPlaylist)
 				.map((track) => (
 					<Track
-						key={track.uri}
-						uri={track.uri}
-						title={track.title}
-						artist={track.artist}
+						key={track.id}
+						id={track.id}
+						name={track.name}
+						artists={track.artists}
 						album={track.album}
 						isInPlaylist={track.isInPlaylist}
 						togglePlaylist={togglePlaylist}
