@@ -36,6 +36,10 @@ function App() {
 
 	useEffect(() => {
 		getPublicAccessToken();
+		if (!userAccessToken) {
+			getRefreshToken(); 
+			setUserAccessToken(window.localStorage.getItem("userAccessToken"));
+		}
 	}, []);
 
 	useEffect(() => {
@@ -137,6 +141,31 @@ function App() {
 		}
 	}
 
+	const getRefreshToken = async () => {
+		// refresh token that has been previously stored
+		const refreshToken = localStorage.getItem("refresh_token");
+		const url = "https://accounts.spotify.com/api/token";
+
+		const payload = {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			body: new URLSearchParams({
+				grant_type: "refresh_token",
+				refresh_token: refreshToken,
+				client_id: clientId,
+			}),
+		};
+		const body = await fetch(url, payload);
+		const response = await body.json();
+
+		localStorage.setItem("access_token", response.access_token);
+		if (response.refresh_token) {
+			localStorage.setItem("refresh_token", response.refresh_token);
+		}
+	};
+
 	async function getUserProfileId() {
 		console.log("getUserProfileId");
 		const url = "https://api.spotify.com/v1/me";
@@ -202,7 +231,7 @@ function App() {
 
 	async function handleSearch(searchTerm) {
 		const trackData = await searchSpotify(searchTerm);
-		setTracks(trackData);
+		setTracks((prev) => [...prev.filter((track) => track.isInPlaylist), ...trackData]);
 	}
 
 	function togglePlaylist(id) {
@@ -235,6 +264,7 @@ function App() {
 						tracks={tracks}
 						userAccessToken={userAccessToken}
 						userProfileId={userProfileId}
+						spotifyLogin={spotifyLogin}
 					/>
 				</div>
 			</main>

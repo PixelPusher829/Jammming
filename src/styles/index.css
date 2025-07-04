@@ -18,7 +18,7 @@ body {
 	background-repeat: no-repeat;
 	background-size: cover 100% 100%;
     background-position: center center;
-
+    background-attachment: fixed;
 	&::before {
     background-color: rgba(74, 14, 139, 0.63);
 		content: "";

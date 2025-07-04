@@ -2,7 +2,7 @@ import { useState } from "react";
 import styles from "../styles/modules/Playlist.module.css";
 import Track from "./Track";
 
-function Playlist({ tracks, togglePlaylist, userAccessToken, userProfileId }) {
+function Playlist({ tracks, togglePlaylist, userAccessToken, userProfileId, spotifyLogin }) {
 	const [playlistInfo, setPlaylistInfo] = useState([
 		{
 			playlistname: "",
@@ -91,6 +91,10 @@ function Playlist({ tracks, togglePlaylist, userAccessToken, userProfileId }) {
 
 	async function handleSaveToSpotify(e) {
 		e.preventDefault();
+
+		if (!userAccessToken) {
+			spotifyLogin();
+		}
 		try {
 			if (playlistInfo.id) {
 				await updateSpotifyPlaylist(playlistInfo.id);
