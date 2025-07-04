@@ -1,5 +1,5 @@
 import styles from "../styles/modules/Track.module.css";
-function Track({id, name, artists, album, isInPlaylist, togglePlaylist}) {
+function Track({name, artists, album, id, isInPlaylist, togglePlaylist}) {
 		return (
 			<div className={styles.track}>
 				<div>
@@ -17,5 +17,3 @@ function Track({id, name, artists, album, isInPlaylist, togglePlaylist}) {
 }
 
 export default Track;
-
-// 

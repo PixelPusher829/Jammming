@@ -5,8 +5,8 @@ function SearchResults({tracks, togglePlaylist}) {
 		<div>
 			<h2>Search Results</h2>
 			<Tracklist
-				tracks={tracks}
 				togglePlaylist={togglePlaylist}
+				tracks={tracks}
 			/>
 		</div>
 	);

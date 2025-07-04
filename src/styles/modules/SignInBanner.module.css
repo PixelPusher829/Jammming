@@ -1,0 +1,28 @@
+.signInBanner{
+    width: 100%;
+    height: auto;
+    text-align: center;
+    background-color: rgba(0, 0, 0, 0.266);
+    padding: 2rem 0rem;
+    p{
+        font-size: 1.2rem;
+        margin-right: 2rem;
+        display: inline-block;
+    }
+    button{
+        padding: 0.8rem 1.5rem;
+        background: var(--primary-color);
+        border-radius: 2rem;
+        transition: 400ms;
+        outline-color: var(--accent-color);
+        outline: 0px solid transparent;
+        border: none;
+        cursor: pointer;
+        color: white;
+        &:hover{
+            background: #1db954;
+            transition: 400ms;
+        }
+    }
+
+}
