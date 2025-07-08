@@ -1,5 +1,5 @@
 import "../styles/App.css";
-import { useState, useEffect, use } from "react";
+import { useState, useEffect } from "react";
 import Playlist from "./Playlist";
 import SearchResults from "./SearchResults";
 import SearchBar from "./SearchBar";
@@ -35,12 +35,12 @@ function App() {
 	const [tracks, setTracks] = useState([]);
 
 	useEffect(() => {
-		getPublicAccessToken();
-		if (!userAccessToken) {
-			getRefreshToken(); 
-			setUserAccessToken(window.localStorage.getItem("userAccessToken"));
+		if (!publicAccessToken) {
+			getPublicAccessToken();
 		}
 	}, []);
+
+
 
 	useEffect(() => {
 		const urlParams = new URLSearchParams(window.location.search);
@@ -59,10 +59,59 @@ function App() {
 	}, []);
 
 	useEffect(() => {
-		if (userAccessToken) {
+		if (!userProfileId && userAccessToken) {
 			getUserProfileId();
 		}
 	}, [userAccessToken]);
+
+	async function makeAuthenticatedRequest(endpoint, method, data) {
+		const headers = {
+			"Content-Type": "application/json",
+		};
+		if (userAccessToken) {
+			headers["Authorization"] = `Bearer ${userAccessToken}`;
+		} else if (publicAccessToken) {
+			headers["Authorization"] = `Bearer ${publicAccessToken}`;
+		} else {
+			console.log("No authorization token being used for request.");
+		}
+		try {
+			const response = await fetch(`https://api.spotify.com/v1/${endpoint}`, {
+				method: method,
+				headers: headers,
+				body: data ? JSON.stringify(data) : undefined,
+			});
+			if (response.status === 401 || response.status === 403) {
+				if (userAccessToken) {
+					window.localStorage.removeItem("access_token");
+					setUserAccessToken(null);
+					console.warn(
+						"Client token expired or unauthorized. Cleared."
+					);
+					getRefreshToken();
+				} else if (publicAccessToken) {
+					console.warn(
+						"Public key token failed. Clearing public token."
+					);
+					setPublicAccessToken(null);
+					getPublicAccessToken();
+				}
+				throw new Error(
+					"Authentication/Authorization failed for request."
+				);
+			}
+			if (!response.ok) {
+				const errorText = await response.text();
+				throw new Error(
+					`HTTP error! status: ${response.status} - ${errorText}`
+				);
+			}
+			return response.json();
+		} catch (error) {
+			console.error(`request to ${url} failed`, error);
+			throw error;
+		}
+	}
 
 	async function getPublicAccessToken() {
 		const authString = btoa(`${clientId}:${clientSecret}`);
@@ -79,37 +128,12 @@ function App() {
 		});
 
 		const data = await response.json();
-		// console.log("Public Access Token:", data.access_token);
+		console.log('Public access token:', data.access_token);
 		setPublicAccessToken(data.access_token);
 	}
 
-	async function spotifyLogin() {
-		// console.log("Spotify Login");
-		const codeVerifier = generateRandomString(64);
-		const hashed = await sha256(codeVerifier);
-		const codeChallenge = base64encode(hashed);
-		const redirectUri = "http://127.0.0.1:5173/";
-		const scope =
-			"user-read-private user-read-email playlist-modify-private playlist-modify-public";
-		const authUrl = new URL("https://accounts.spotify.com/authorize");
-
-		window.localStorage.setItem("code_verifier", codeVerifier);
-		
-		const params = {
-			response_type: "code",
-			client_id: clientId,
-			scope,
-			code_challenge_method: "S256",
-			code_challenge: codeChallenge,
-			redirect_uri: redirectUri,
-		};
-
-		authUrl.search = new URLSearchParams(params).toString();
-		window.location.href = authUrl.toString();
-	}
-
 	async function getUserAccessToken(code) {
-		// console.log("getUserAccessToken");
+		console.log("Getting user access token, code:" + code);
 		const codeVerifier = window.localStorage.getItem("code_verifier");
 		const url = "https://accounts.spotify.com/api/token";
 		const redirectUri = "http://127.0.0.1:5173/";
@@ -130,62 +154,94 @@ function App() {
 
 			const body = await fetch(url, payload);
 			const response = await body.json();
-
-			// console.log("User Access Token:", response.access_token);
-			setUserAccessToken(response.access_token);
-			localStorage.setItem("access_token", response.access_token);
-
+			if (response.access_token) {
+				console.log("User access token:", response.access_token);
+				setUserAccessToken(response.access_token);
+				window.localStorage.setItem(
+					"access_token",
+					response.access_token
+				);
+			}
 		} catch (error) {
 			console.error("Error getting user access token:", error);
 			console.error("Response body:", error.response.json());
 		}
 	}
 
-	const getRefreshToken = async () => {
-		// refresh token that has been previously stored
-		const refreshToken = localStorage.getItem("refresh_token");
-		const url = "https://accounts.spotify.com/api/token";
+	async function spotifyLogin() {
+		const codeVerifier = generateRandomString(64);
+		const hashed = await sha256(codeVerifier);
+		const codeChallenge = base64encode(hashed);
+		const redirectUri = "http://127.0.0.1:5173/";
+		const scope =
+			"user-read-private user-read-email playlist-modify-private playlist-modify-public";
+		const authUrl = new URL("https://accounts.spotify.com/authorize");
 
-		const payload = {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-			},
-			body: new URLSearchParams({
-				grant_type: "refresh_token",
-				refresh_token: refreshToken,
-				client_id: clientId,
-			}),
+		window.localStorage.setItem("code_verifier", codeVerifier);
+
+		const params = {
+			response_type: "code",
+			client_id: clientId,
+			scope,
+			code_challenge_method: "S256",
+			code_challenge: codeChallenge,
+			redirect_uri: redirectUri,
 		};
-		const body = await fetch(url, payload);
-		const response = await body.json();
 
-		localStorage.setItem("access_token", response.access_token);
-		if (response.refresh_token) {
-			localStorage.setItem("refresh_token", response.refresh_token);
-		}
-	};
+		authUrl.search = new URLSearchParams(params).toString();
+		window.location.href = authUrl.toString();
+	}
 
-	async function getUserProfileId() {
-		console.log("getUserProfileId");
-		const url = "https://api.spotify.com/v1/me";
+	async function getRefreshToken() {
 		try {
-			const response = await fetch(url, {
-				method: "GET",
+			const refreshToken = localStorage.getItem("refresh_token");
+			const url = "https://accounts.spotify.com/api/token";
+
+			const payload = {
+				method: "POST",
 				headers: {
-					Authorization: `Bearer ${userAccessToken}`,
+					"Content-Type": "application/x-www-form-urlencoded",
 				},
-			});
-			const data = await response.json();
-			console.log("Fetched user profile:", data.id);
-			setUserProfileId(data.id);
+				body: new URLSearchParams({
+					grant_type: "refresh_token",
+					refresh_token: refreshToken,
+					client_id: clientId,
+				}),
+			};
+			const data = await fetch(url, payload);
+			const response = await data.json();
+
+			if (response.error) {
+				console.error("Error refreshing token:", response.error);
+			} else {
+				setUserAccessToken(response.access_token);
+				window.localStorage.setItem(
+					"access_token",
+					response.access_token
+				);
+				if (response.refresh_token) {
+					localStorage.setItem(
+						"refresh_token",
+						response.refresh_token
+					);
+				}
+			}
 		} catch (error) {
-			console.error("Error fetching user ID:", error.message);
+			console.error("Error refreshing token:", error);
 		}
 	}
 
+	async function getUserProfileId() {
+		console.log("getUserProfileId: userAccessToken:", userAccessToken);
+		const url = "me";
+		return makeAuthenticatedRequest(url, "GET", null).then((response) => {
+			console.log("User Profile ID:", response.id);
+			setUserProfileId(response.id);
+		});
+	}
+
 	async function searchSpotify(searchTerm) {
-		const endpoint = "https://api.spotify.com/v1/search";
+		const endpoint = "search";
 		const type = "track";
 		const limit = 10;
 		const params = new URLSearchParams();
@@ -193,45 +249,26 @@ function App() {
 		params.append("type", type);
 		params.append("limit", limit);
 		const url = `${endpoint}?${params.toString()}`;
-		try {
-			const response = await fetch(url, {
-				headers: {
-					Authorization: `Bearer ${
-						userAccessToken || publicAccessToken
-					}`,
-				},
-			});
-
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(
-					`HTTP error! status: ${response.status} - ${errorText}`
-				);
-			}
-
-			const data = await response.json();
-			if (data.tracks && data.tracks.items) {
-				const tracks = data.tracks.items.map((track) => ({
+		return makeAuthenticatedRequest(url, "GET", null).then((response) => {
+			if (response.tracks && response.tracks.items) {
+				const tracks = response.tracks.items.map((track) => ({
 					...track,
 					isInPlaylist: false,
 				}));
 				return tracks;
 			} else {
-				console.warn(
-					"Spotify API response did not contain expected tracks data.",
-					data
-				);
+				console.log("No tracks found.");
 				return [];
 			}
-		} catch (error) {
-			console.error("Error searching Spotify:", error);
-			return [];
-		}
+		});
 	}
 
 	async function handleSearch(searchTerm) {
 		const trackData = await searchSpotify(searchTerm);
-		setTracks((prev) => [...prev.filter((track) => track.isInPlaylist), ...trackData]);
+		setTracks((prev) => [
+			...prev.filter((track) => track.isInPlaylist),
+			...trackData,
+		]);
 	}
 
 	function togglePlaylist(id) {
@@ -251,7 +288,9 @@ function App() {
 					Ja<span>mmm</span>ing
 				</h1>
 			</header>
-			{!userAccessToken && <SignInBanner spotifyLogin={spotifyLogin} />}
+			{!userAccessToken ? (
+				<SignInBanner spotifyLogin={spotifyLogin} />
+			) : null}
 			<main>
 				<SearchBar handleSearch={handleSearch} />
 				<div className="contents">
@@ -262,9 +301,11 @@ function App() {
 					<Playlist
 						togglePlaylist={togglePlaylist}
 						tracks={tracks}
+						setTracks={setTracks}
 						userAccessToken={userAccessToken}
 						userProfileId={userProfileId}
 						spotifyLogin={spotifyLogin}
+						makeAuthenticatedRequest={makeAuthenticatedRequest}
 					/>
 				</div>
 			</main>
