@@ -26,8 +26,9 @@ const base64encode = (input) => {
 };
 
 function App() {
-	const clientId = import.meta.env.VITE_APP_SPOTIFY_CLIENT_ID;
-	const clientSecret = import.meta.env.VITE_APP_SPOTIFY_CLIENT_SECRET;
+	const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
+	const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET;
+	const redirectUri = import.meta.env.VITE_SPOTIFY_REDIRECT_URI;
 
 	const [publicAccessToken, setPublicAccessToken] = useState(null);
 	const [userAccessToken, setUserAccessToken] = useState(null);
@@ -39,8 +40,6 @@ function App() {
 			getPublicAccessToken();
 		}
 	});
-
-
 
 	useEffect(() => {
 		const urlParams = new URLSearchParams(window.location.search);
@@ -138,7 +137,6 @@ function App() {
 		// console.log("Getting user access token, code:" + code);
 		const codeVerifier = window.localStorage.getItem("code_verifier");
 		const url = "https://accounts.spotify.com/api/token";
-		const redirectUri = "http://127.0.0.1:5173/";
 		try {
 			const payload = {
 				method: "POST",
@@ -174,7 +172,6 @@ function App() {
 		const codeVerifier = generateRandomString(64);
 		const hashed = await sha256(codeVerifier);
 		const codeChallenge = base64encode(hashed);
-		const redirectUri = "http://127.0.0.1:5173/";
 		const scope =
 			"user-read-private user-read-email playlist-modify-private playlist-modify-public";
 		const authUrl = new URL("https://accounts.spotify.com/authorize");
