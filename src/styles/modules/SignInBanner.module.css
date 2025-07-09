@@ -1,12 +1,16 @@
 .signInBanner{
     width: 100%;
     height: auto;
-    text-align: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+    align-items: center;
     background-color: rgba(0, 0, 0, 0.266);
     padding: 2rem 0rem;
     p{
         font-size: 1.2rem;
-        margin-right: 2rem;
+        text-align: center;
         display: inline-block;
     }
     button{

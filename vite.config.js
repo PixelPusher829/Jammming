@@ -1,27 +1,24 @@
-// VITE DEFAULT CONFIG
-// import { defineConfig } from 'vite'
-// import react from '@vitejs/plugin-react'
-
-// export default defineConfig({
-//   plugins: [react()]
-// })
-
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import fs from "fs";
-import path from "path";
 import { fileURLToPath } from "url";
+import react from "@vitejs/plugin-react";
+import path from "path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const ReactCompilerConfig = {
+	target: "19",
+};
+
 export default defineConfig({
-	plugins: [react()],
+	plugins: [
+		react({
+			babel: {
+				plugins: [["babel-plugin-react-compiler", ReactCompilerConfig]],
+			},
+		}),
+	],
 	server: {
-		// https: {
-		// 	key: fs.readFileSync(path.resolve(__dirname, "cert/key.pem")),
-		// 	cert: fs.readFileSync(path.resolve(__dirname, "cert/cert.pem")),
-		// },
 		host: "127.0.0.1",
 		port: 5173,
 	},

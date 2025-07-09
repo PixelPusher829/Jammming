@@ -11,11 +11,15 @@ function Playlist({
 	spotifyLogin,
 	makeAuthenticatedRequest,
 }) {
+	const [isActiveEffect, setIsActiveEffect] = useState(false);
+	const [fadeKey, setFadeKey] = useState(0);
+	
+	const [playlistButtonText, setPlaylistButtonText] = useState("Login to Spotify");
 	const [playlistInfo, setPlaylistInfo] = useState({
 		name: "",
 		id: "",
 	});
-
+	
 	useEffect(() => {
 		const storedPlaylistInfo = window.localStorage.getItem("playlistInfo");
 		const storedTracks = window.localStorage.getItem("tracks");
@@ -28,18 +32,27 @@ function Playlist({
 		}
 		window.localStorage.removeItem("playlistInfo");
 		window.localStorage.removeItem("tracks");
-	}, []);
+	});
+
+	useEffect(() => {
+		if (userAccessToken && !playlistInfo.id) {
+			setPlaylistButtonText("Save to Spotify");
+		} else if(playlistInfo.id) {
+			setPlaylistButtonText("Update Playlist");
+		} else if (!userAccessToken) {
+			setPlaylistButtonText("Login to Spotify");
+		}
+	}, [userAccessToken, playlistInfo.id]);
 
 	const tracksInPlaylist = tracks.filter((track) => track.isInPlaylist);
 	const hasTracksInPlaylist = tracksInPlaylist && tracksInPlaylist.length > 0;
 
-	async function getUserPlaylists() {
-		const url = `users/${userProfileId}/playlists`;
-		return makeAuthenticatedRequest(url, "GET", null).then(
-			(response) => response.items
-		);
+	async function getPlaylist(id) {
+		if (!id) return;
+		const url = `playlists/${id}`;
+		return await makeAuthenticatedRequest(url, "GET", null);
 	}
-
+	
 	async function updateSpotifyPlaylist(playlistId) {
 		const url = `playlists/${playlistId}/tracks`;
 		const body = {
@@ -66,6 +79,21 @@ function Playlist({
 		return makeAuthenticatedRequest(url, "PUT", body);
 	}
 
+	function handleButtonEffect() {
+		if (isActiveEffect) {
+			return;
+		}
+		setIsActiveEffect(true);
+
+		setTimeout(() => {
+			setIsActiveEffect(false);
+		}, 500);
+	}
+
+	function triggerFadeOut(){
+		setFadeKey((prevKey) => prevKey + 1); 
+	};
+
 	async function handleSaveToSpotify(e) {
 		e.preventDefault();
 
@@ -75,35 +103,29 @@ function Playlist({
 				JSON.stringify(playlistInfo)
 			);
 			window.localStorage.setItem("tracks", JSON.stringify(tracks));
-			spotifyLogin();
+			await spotifyLogin();
+			return;
 		}
 
 		try {
-			const userPlaylists = await getUserPlaylists(); //Get User Playlists
-
-			const existingPlaylist = userPlaylists.find(
-				(playlists) => playlists.id === playlistInfo.id //Search for existing playlist
-			);
+			const response = await getPlaylist(playlistInfo.id);
+			const existingPlaylist = response ? true : false;
 
 			if (!existingPlaylist) {
-				//If playlist doesn't exist...
-				const newPlaylist = await createNewPlaylist(); // ...create new playlist and save ID,
-				setPlaylistInfo((prev) => ({
-					...prev,
-					id: newPlaylist.id,
-				}));
-
-				setPlaylistInfo((prev) => ({ ...prev, id: playlistInfo.id }));
-				await updateSpotifyPlaylist(playlistInfo.id); //... then update playlist songs.
-			}
-			if (existingPlaylist) {
-				//If playlist exists, update playlist
-				await updateSpotifyPlaylist(playlistInfo.id);
-			}
-
-			if (playlistInfo.name !== existingPlaylist.name) {
-				//If playlist name has changed, update playlist name
+				console.log("Playlist doesnt exist, creating...");
+				const newPlaylist = await createNewPlaylist();
+				setPlaylistInfo((prev) => ({ ...prev, id: newPlaylist.id }));
+				const response = await updateSpotifyPlaylist(newPlaylist.id);
+				if (response) {
+					triggerFadeOut();
+				}
+			} else {
+				console.log("Playlist already exists, updating...");
+				const response = await updateSpotifyPlaylist(playlistInfo.id);
 				await updatePlaylistName(playlistInfo.id);
+				if (response) {
+					triggerFadeOut();
+				}
 			}
 		} catch (error) {
 			console.error(error);
@@ -138,7 +160,22 @@ function Playlist({
 								togglePlaylist={togglePlaylist}
 							/>
 						))}
-						<button type="submit">Save to Spotify</button>
+						<button
+							onClick={handleButtonEffect}
+							className={`${styles.saveButton} ${
+								isActiveEffect ? styles.buttonEffect : ""
+							}`}
+						>
+							{playlistButtonText}
+						</button>
+						{playlistInfo.id && (
+							<p
+								key={fadeKey} 
+								className={`${styles.success} ${styles.fadeOut}`} 
+							>
+								Playlist saved!
+							</p>
+						)}
 					</>
 				) : (
 					<p>No tracks in the playlist</p>

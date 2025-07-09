@@ -38,7 +38,7 @@ function App() {
 		if (!publicAccessToken) {
 			getPublicAccessToken();
 		}
-	}, []);
+	});
 
 
 
@@ -56,15 +56,15 @@ function App() {
 		if (code) {
 			getUserAccessToken(code);
 		}
-	}, []);
+	});
 
 	useEffect(() => {
 		if (!userProfileId && userAccessToken) {
 			getUserProfileId();
 		}
-	}, [userAccessToken]);
+	}, [userAccessToken, getUserProfileId, userProfileId]);
 
-	async function makeAuthenticatedRequest(endpoint, method, data) {
+	async function makeAuthenticatedRequest(url, method, data) {
 		const headers = {
 			"Content-Type": "application/json",
 		};
@@ -76,7 +76,7 @@ function App() {
 			console.log("No authorization token being used for request.");
 		}
 		try {
-			const response = await fetch(`https://api.spotify.com/v1/${endpoint}`, {
+			const response = await fetch(`https://api.spotify.com/v1/${url}`, {
 				method: method,
 				headers: headers,
 				body: data ? JSON.stringify(data) : undefined,
@@ -100,13 +100,15 @@ function App() {
 					"Authentication/Authorization failed for request."
 				);
 			}
+
 			if (!response.ok) {
 				const errorText = await response.text();
 				throw new Error(
 					`HTTP error! status: ${response.status} - ${errorText}`
 				);
 			}
-			return response.json();
+			const text = await response.text();
+			return text ? JSON.parse(text) : null;
 		} catch (error) {
 			console.error(`request to ${url} failed`, error);
 			throw error;
@@ -128,12 +130,12 @@ function App() {
 		});
 
 		const data = await response.json();
-		console.log('Public access token:', data.access_token);
+		// console.log('Public access token:', data.access_token);
 		setPublicAccessToken(data.access_token);
 	}
 
 	async function getUserAccessToken(code) {
-		console.log("Getting user access token, code:" + code);
+		// console.log("Getting user access token, code:" + code);
 		const codeVerifier = window.localStorage.getItem("code_verifier");
 		const url = "https://accounts.spotify.com/api/token";
 		const redirectUri = "http://127.0.0.1:5173/";
@@ -155,7 +157,7 @@ function App() {
 			const body = await fetch(url, payload);
 			const response = await body.json();
 			if (response.access_token) {
-				console.log("User access token:", response.access_token);
+				// console.log("User access token:", response.access_token);
 				setUserAccessToken(response.access_token);
 				window.localStorage.setItem(
 					"access_token",
@@ -232,10 +234,10 @@ function App() {
 	}
 
 	async function getUserProfileId() {
-		console.log("getUserProfileId: userAccessToken:", userAccessToken);
+		// console.log("getUserProfileId: userAccessToken:", userAccessToken);
 		const url = "me";
 		return makeAuthenticatedRequest(url, "GET", null).then((response) => {
-			console.log("User Profile ID:", response.id);
+			// console.log("User Profile ID:", response.id);
 			setUserProfileId(response.id);
 		});
 	}
@@ -265,10 +267,21 @@ function App() {
 
 	async function handleSearch(searchTerm) {
 		const trackData = await searchSpotify(searchTerm);
-		setTracks((prev) => [
-			...prev.filter((track) => track.isInPlaylist),
-			...trackData,
-		]);
+
+		setTracks((prev) => {
+			const existingPlaylistTracks = prev.filter(
+				(track) => track.isInPlaylist
+			);
+			const existingTrackIds = new Set(
+				existingPlaylistTracks.map((track) => track.id)
+			);
+
+			const newTracksToAdd = trackData
+				.filter((track) => !existingTrackIds.has(track.id))
+				.map((track) => ({ ...track, isInPlaylist: false }));
+
+			return [...existingPlaylistTracks, ...newTracksToAdd];
+		});
 	}
 
 	function togglePlaylist(id) {

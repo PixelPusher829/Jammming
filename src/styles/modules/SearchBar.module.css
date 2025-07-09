@@ -20,7 +20,8 @@
 		padding: 1rem 1.5rem 1rem 3.8rem;
 		border-radius: 2rem;
 		margin-left: -2.3rem;
-		min-width: 25rem;
+		max-width: 25rem;
+		width: 100%;
 		display: inline-block;
 		transition: 400ms ease-in-out;
 		outline: transparent 25px solid;
