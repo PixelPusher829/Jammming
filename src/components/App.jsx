@@ -1,5 +1,5 @@
 import "../styles/App.css";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Playlist from "./Playlist";
 import SearchResults from "./SearchResults";
 import SearchBar from "./SearchBar";
@@ -27,73 +27,272 @@ const base64encode = (input) => {
 
 function App() {
 	const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
-	const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET;
 	const redirectUri = import.meta.env.VITE_SPOTIFY_REDIRECT_URI;
 
 	const [publicAccessToken, setPublicAccessToken] = useState(null);
 	const [userAccessToken, setUserAccessToken] = useState(null);
 	const [userProfileId, setUserProfileId] = useState(null);
 	const [tracks, setTracks] = useState([]);
+	const [refreshToken, setRefreshToken] = useState(null);
+	const [expiresAt, setExpiresAt] = useState(0);
 
-	useEffect(() => {
-		if (!publicAccessToken) {
-			getPublicAccessToken();
-		}
-	});
+	const exchangeAuthorizationCodeForTokens = useCallback(async (code) => {
+		try {
+			const response = await fetch("/api/spotify-auth", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ authorizationCode: code }),
+			});
 
-	useEffect(() => {
-		const urlParams = new URLSearchParams(window.location.search);
-		let code = urlParams.get("code");
+			if (!response.ok) {
+				const errorData = await response.json();
+				console.error(
+					"Error from /api/spotify-auth serverless function:",
+					errorData
+				);
+				throw new Error(
+					errorData.message ||
+						"Failed to get Spotify tokens from backend."
+				);
+			}
 
-		if (code) {
-			window.localStorage.setItem("code", code);
+			const data = await response.json();
+			setUserAccessToken(data.access_token);
+			setRefreshToken(data.refresh_token);
+			const expiryTime = Date.now() + data.expires_in * 1000;
+			setExpiresAt(expiryTime);
+
+			localStorage.setItem("spotify_access_token", data.access_token);
+			localStorage.setItem("spotify_refresh_token", data.refresh_token);
+			localStorage.setItem("spotify_token_expires_at", expiryTime);
+
+			window.history.replaceState(
+				{},
+				document.title,
+				window.location.pathname
+			);
+		} catch (error) {
+			console.error("Error exchanging code:", error);
+			setUserAccessToken(null);
+			setRefreshToken(null);
+			setExpiresAt(0);
+			localStorage.clear();
 		}
 	}, []);
 
-	useEffect(() => {
-		const code = window.localStorage.getItem("code");
-		if (code) {
-			getUserAccessToken(code);
+	const refreshAccessToken = useCallback(async () => {
+		const storedRefreshToken = localStorage.getItem(
+			"spotify_refresh_token"
+		);
+
+		if (!storedRefreshToken) {
+			console.log("No refresh token found to refresh.");
+			setUserAccessToken(null);
+			setRefreshToken(null);
+			setExpiresAt(0);
+			localStorage.clear();
+			return null;
 		}
-	});
+
+		try {
+			const response = await fetch("/api/spotify-auth", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ refreshToken: storedRefreshToken }),
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				console.error(
+					"Error from /api/spotify-auth serverless function (refresh):",
+					errorData
+				);
+				throw new Error(
+					errorData.message || "Failed to refresh Spotify token."
+				);
+			}
+
+			const data = await response.json();
+			const newRefreshToken = data.refresh_token || storedRefreshToken;
+
+			setUserAccessToken(data.access_token);
+			setRefreshToken(newRefreshToken);
+			const expiryTime = Date.now() + data.expires_in * 1000;
+			setExpiresAt(expiryTime);
+
+			localStorage.setItem("spotify_access_token", data.access_token);
+			localStorage.setItem("spotify_refresh_token", newRefreshToken);
+			localStorage.setItem("spotify_token_expires_at", expiryTime);
+
+			return data.access_token;
+		} catch (error) {
+			console.error("Error refreshing Spotify token:", error);
+			setUserAccessToken(null);
+			setRefreshToken(null);
+			setExpiresAt(0);
+			localStorage.clear();
+			return null;
+		}
+	}, []);
+
+	const getPublicAccessToken = useCallback(async () => {
+		try {
+			const response = await fetch("/api/auth-public", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				console.error(
+					"Error from /api/auth-public serverless function:",
+					errorData
+				);
+				throw new Error(
+					"Failed to get public access token from serverless function."
+				);
+			}
+
+			const data = await response.json();
+			setPublicAccessToken(data.access_token);
+		} catch (error) {
+			console.error(
+				"Error calling serverless function for public token:",
+				error
+			);
+		}
+	}, []);
+
+	const getUserProfileId = useCallback(async () => {
+		const url = "me";
+		try {
+			const response = await makeAuthenticatedRequest(url, "GET", null);
+			setUserProfileId(response.id);
+		} catch (error) {
+			console.error("Error getting user profile ID:", error);
+		}
+	}, [userAccessToken, publicAccessToken]);
 
 	useEffect(() => {
-		if (!userProfileId && userAccessToken) {
+		const storedAccessToken = localStorage.getItem("spotify_access_token");
+		const storedRefreshToken = localStorage.getItem(
+			"spotify_refresh_token"
+		);
+		const storedExpiresAt = parseInt(
+			localStorage.getItem("spotify_token_expires_at"),
+			10
+		);
+		const urlParams = new URLSearchParams(window.location.search);
+		const code = urlParams.get("code");
+
+		if (code) {
+			exchangeAuthorizationCodeForTokens(code);
+		} else if (storedAccessToken && storedExpiresAt > Date.now()) {
+			setAccessToken(storedAccessToken);
+			setRefreshToken(storedRefreshToken);
+			setExpiresAt(storedExpiresAt);
+		} else if (storedRefreshToken) {
+			refreshAccessToken();
+		} else {
+			getPublicAccessToken();
+		}
+	}, [
+		exchangeAuthorizationCodeForTokens,
+		refreshAccessToken,
+		getPublicAccessToken,
+	]);
+
+	useEffect(() => {
+		if (userAccessToken && !userProfileId) {
 			getUserProfileId();
 		}
-	}, [userAccessToken, getUserProfileId, userProfileId]);
+	}, [userAccessToken, userProfileId, getUserProfileId]);
+
+	useEffect(() => {
+		const interval = setInterval(() => {
+			if (userAccessToken && expiresAt < Date.now() && refreshToken) {
+				refreshAccessToken();
+			}
+		}, 5 * 60 * 1000);
+
+		return () => clearInterval(interval);
+	}, [userAccessToken, expiresAt, refreshToken, refreshAccessToken]);
 
 	async function makeAuthenticatedRequest(url, method, data) {
+		let currentAccessToken = userAccessToken || publicAccessToken;
+
 		const headers = {
 			"Content-Type": "application/json",
+			...(currentAccessToken && {
+				Authorization: `Bearer ${currentAccessToken}`,
+			}),
 		};
-		if (userAccessToken) {
-			headers["Authorization"] = `Bearer ${userAccessToken}`;
-		} else if (publicAccessToken) {
-			headers["Authorization"] = `Bearer ${publicAccessToken}`;
-		} else {
-			console.log("No authorization token being used for request.");
-		}
+
 		try {
-			const response = await fetch(`https://api.spotify.com/v1/${url}`, {
-				method: method,
-				headers: headers,
-				body: data ? JSON.stringify(data) : undefined,
-			});
+			const response = await fetch(
+				`http://googleusercontent.com/api.spotify.com/v1/${url}`,
+				{
+					method: method,
+					headers: headers,
+					body: data ? JSON.stringify(data) : undefined,
+				}
+			);
+
 			if (response.status === 401 || response.status === 403) {
 				if (userAccessToken) {
-					window.localStorage.removeItem("access_token");
-					setUserAccessToken(null);
 					console.warn(
-						"Client token expired or unauthorized. Cleared."
+						"User token expired or unauthorized. Attempting refresh."
 					);
-					getRefreshToken();
+					const newAccessToken = await refreshAccessToken();
+					if (newAccessToken) {
+						currentAccessToken = newAccessToken;
+						headers[
+							"Authorization"
+						] = `Bearer ${currentAccessToken}`;
+						const retryResponse = await fetch(
+							`http://googleusercontent.com/api.spotify.com/v1/${url}`,
+							{
+								method: method,
+								headers: headers,
+								body: data ? JSON.stringify(data) : undefined,
+							}
+						);
+						if (retryResponse.ok) {
+							const text = await retryResponse.text();
+							return text ? JSON.parse(text) : null;
+						} else {
+							const errorText = await retryResponse.text();
+							throw new Error(
+								`HTTP error on retry! status: ${retryResponse.status} - ${errorText}`
+							);
+						}
+					} else {
+						console.error(
+							"Failed to refresh token, user needs to re-authenticate."
+						);
+						setUserAccessToken(null);
+						setRefreshToken(null);
+						setExpiresAt(0);
+						localStorage.clear();
+						throw new Error(
+							"User session expired. Please log in again."
+						);
+					}
 				} else if (publicAccessToken) {
 					console.warn(
-						"Public key token failed. Clearing public token."
+						"Public key token failed. Attempting to get new public token."
 					);
 					setPublicAccessToken(null);
-					getPublicAccessToken();
+					await getPublicAccessToken();
+					throw new Error(
+						"Public token refreshed, please retry search."
+					);
 				}
 				throw new Error(
 					"Authentication/Authorization failed for request."
@@ -111,60 +310,6 @@ function App() {
 		} catch (error) {
 			console.error(`request to ${url} failed`, error);
 			throw error;
-		}
-	}
-
-	async function getPublicAccessToken() {
-		const authString = btoa(`${clientId}:${clientSecret}`);
-		const params = new URLSearchParams();
-		params.append("grant_type", "client_credentials");
-
-		const response = await fetch("https://accounts.spotify.com/api/token", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-				Authorization: `Basic ${authString}`,
-			},
-			body: params,
-		});
-
-		const data = await response.json();
-		// console.log('Public access token:', data.access_token);
-		setPublicAccessToken(data.access_token);
-	}
-
-	async function getUserAccessToken(code) {
-		// console.log("Getting user access token, code:" + code);
-		const codeVerifier = window.localStorage.getItem("code_verifier");
-		const url = "https://accounts.spotify.com/api/token";
-		try {
-			const payload = {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded",
-				},
-				body: new URLSearchParams({
-					client_id: clientId,
-					grant_type: "authorization_code",
-					code,
-					redirect_uri: redirectUri,
-					code_verifier: codeVerifier,
-				}),
-			};
-
-			const body = await fetch(url, payload);
-			const response = await body.json();
-			if (response.access_token) {
-				// console.log("User access token:", response.access_token);
-				setUserAccessToken(response.access_token);
-				window.localStorage.setItem(
-					"access_token",
-					response.access_token
-				);
-			}
-		} catch (error) {
-			console.error("Error getting user access token:", error);
-			console.error("Response body:", error.response.json());
 		}
 	}
 
@@ -191,54 +336,6 @@ function App() {
 		window.location.href = authUrl.toString();
 	}
 
-	async function getRefreshToken() {
-		try {
-			const refreshToken = localStorage.getItem("refresh_token");
-			const url = "https://accounts.spotify.com/api/token";
-
-			const payload = {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded",
-				},
-				body: new URLSearchParams({
-					grant_type: "refresh_token",
-					refresh_token: refreshToken,
-					client_id: clientId,
-				}),
-			};
-			const data = await fetch(url, payload);
-			const response = await data.json();
-
-			if (response.error) {
-				console.error("Error refreshing token:", response.error);
-			} else {
-				setUserAccessToken(response.access_token);
-				window.localStorage.setItem(
-					"access_token",
-					response.access_token
-				);
-				if (response.refresh_token) {
-					localStorage.setItem(
-						"refresh_token",
-						response.refresh_token
-					);
-				}
-			}
-		} catch (error) {
-			console.error("Error refreshing token:", error);
-		}
-	}
-
-	async function getUserProfileId() {
-		// console.log("getUserProfileId: userAccessToken:", userAccessToken);
-		const url = "me";
-		return makeAuthenticatedRequest(url, "GET", null).then((response) => {
-			// console.log("User Profile ID:", response.id);
-			setUserProfileId(response.id);
-		});
-	}
-
 	async function searchSpotify(searchTerm) {
 		const endpoint = "search";
 		const type = "track";
@@ -248,18 +345,17 @@ function App() {
 		params.append("type", type);
 		params.append("limit", limit);
 		const url = `${endpoint}?${params.toString()}`;
-		return makeAuthenticatedRequest(url, "GET", null).then((response) => {
-			if (response.tracks && response.tracks.items) {
-				const tracks = response.tracks.items.map((track) => ({
-					...track,
-					isInPlaylist: false,
-				}));
-				return tracks;
-			} else {
-				console.log("No tracks found.");
-				return [];
-			}
-		});
+		const response = await makeAuthenticatedRequest(url, "GET", null);
+		if (response && response.tracks && response.tracks.items) {
+			const tracks = response.tracks.items.map((track) => ({
+				...track,
+				isInPlaylist: false,
+			}));
+			return tracks;
+		} else {
+			console.log("No tracks found.");
+			return [];
+		}
 	}
 
 	async function handleSearch(searchTerm) {
@@ -322,7 +418,5 @@ function App() {
 		</>
 	);
 }
-
-//Dont forget to remove SSL certificate, uninstall Open SSL and reset vite.config when deploying!!
 
 export default App;

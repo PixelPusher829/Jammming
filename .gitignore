@@ -24,3 +24,5 @@ cert/
 *.njsproj
 *.sln
 *.sw?
+
+.vercel
