@@ -36,52 +36,6 @@ function App() {
 	const [refreshToken, setRefreshToken] = useState(null);
 	const [expiresAt, setExpiresAt] = useState(0);
 
-	const exchangeAuthorizationCodeForTokens = useCallback(async (code) => {
-		try {
-			const response = await fetch("/api/spotify-auth", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ authorizationCode: code }),
-			});
-
-			if (!response.ok) {
-				const errorData = await response.json();
-				console.error(
-					"Error from /api/spotify-auth serverless function:",
-					errorData
-				);
-				throw new Error(
-					errorData.message ||
-						"Failed to get Spotify tokens from backend."
-				);
-			}
-
-			const data = await response.json();
-			setUserAccessToken(data.access_token);
-			setRefreshToken(data.refresh_token);
-			const expiryTime = Date.now() + data.expires_in * 1000;
-			setExpiresAt(expiryTime);
-
-			localStorage.setItem("spotify_access_token", data.access_token);
-			localStorage.setItem("spotify_refresh_token", data.refresh_token);
-			localStorage.setItem("spotify_token_expires_at", expiryTime);
-
-			window.history.replaceState(
-				{},
-				document.title,
-				window.location.pathname
-			);
-		} catch (error) {
-			console.error("Error exchanging code:", error);
-			setUserAccessToken(null);
-			setRefreshToken(null);
-			setExpiresAt(0);
-			localStorage.clear();
-		}
-	}, []);
-
 	const refreshAccessToken = useCallback(async () => {
 		const storedRefreshToken = localStorage.getItem(
 			"spotify_refresh_token"
@@ -137,11 +91,11 @@ function App() {
 			localStorage.clear();
 			return null;
 		}
-	}, []);
+	}, []); 
 
 	const getPublicAccessToken = useCallback(async () => {
 		try {
-			const response = await fetch("/api/auth-public", {
+			const response = await fetch("/api/public-auth", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -151,7 +105,7 @@ function App() {
 			if (!response.ok) {
 				const errorData = await response.json();
 				console.error(
-					"Error from /api/auth-public serverless function:",
+					"Error from /api/public-auth serverless function:",
 					errorData
 				);
 				throw new Error(
@@ -169,6 +123,164 @@ function App() {
 		}
 	}, []);
 
+	const exchangeAuthorizationCodeForTokens = useCallback(async (code) => {
+		const codeVerifier = localStorage.getItem("code_verifier");
+		localStorage.removeItem("code_verifier");
+
+		if (!codeVerifier) {
+			console.error(
+				"Error: code_verifier not found in localStorage during token exchange."
+			);
+			return;
+		}
+
+		try {
+			const response = await fetch("/api/spotify-auth", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					authorizationCode: code,
+					codeVerifier: codeVerifier,
+				}),
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				console.error(
+					"Error from /api/spotify-auth serverless function:",
+					errorData
+				);
+				throw new Error(
+					errorData.message ||
+						"Failed to get Spotify tokens from backend."
+				);
+			}
+
+			const data = await response.json();
+			setUserAccessToken(data.access_token);
+			setRefreshToken(data.refresh_token);
+			const expiryTime = Date.now() + data.expires_in * 1000;
+			setExpiresAt(expiryTime);
+
+			localStorage.setItem("spotify_access_token", data.access_token);
+			localStorage.setItem("spotify_refresh_token", data.refresh_token);
+			localStorage.setItem("spotify_token_expires_at", expiryTime);
+
+			window.history.replaceState(
+				{},
+				document.title,
+				window.location.pathname
+			);
+		} catch (error) {
+			console.error("Error exchanging code:", error);
+			setUserAccessToken(null);
+			setRefreshToken(null);
+			setExpiresAt(0);
+			localStorage.clear();
+		}
+	}, []);
+
+	const makeAuthenticatedRequest = useCallback(
+		async (url, method, data) => {
+			let currentAccessToken = userAccessToken || publicAccessToken;
+
+			const headers = {
+				"Content-Type": "application/json",
+				...(currentAccessToken && {
+					Authorization: `Bearer ${currentAccessToken}`,
+				}),
+			};
+
+			try {
+				const response = await fetch(
+					`https://api.spotify.com/v1/${url}`,
+					{
+						method: method,
+						headers: headers,
+						body: data ? JSON.stringify(data) : undefined,
+					}
+				);
+
+				if (response.status === 401 || response.status === 403) {
+					if (userAccessToken) {
+						console.warn(
+							"User token expired or unauthorized. Attempting refresh."
+						);
+						const newAccessToken = await refreshAccessToken();
+						if (newAccessToken) {
+							currentAccessToken = newAccessToken;
+							headers[
+								"Authorization"
+							] = `Bearer ${currentAccessToken}`;
+							const retryResponse = await fetch(
+								`https://api.spotify.com/v1/${url}`,
+								{
+									method: method,
+									headers: headers,
+									body: data
+										? JSON.stringify(data)
+										: undefined,
+								}
+							);
+							if (retryResponse.ok) {
+								const text = await retryResponse.text();
+								return text ? JSON.parse(text) : null;
+							} else {
+								const errorText = await retryResponse.text();
+								throw new Error(
+									`HTTP error on retry! status: ${retryResponse.status} - ${errorText}`
+								);
+							}
+						} else {
+							console.error(
+								"Failed to refresh token, user needs to re-authenticate."
+							);
+							setUserAccessToken(null);
+							setRefreshToken(null);
+							setExpiresAt(0);
+							localStorage.clear();
+							throw new Error(
+								"User session expired. Please log in again."
+							);
+						}
+					} else if (publicAccessToken) {
+						console.warn(
+							"Public key token failed. Attempting to get new public token."
+						);
+						setPublicAccessToken(null);
+						await getPublicAccessToken();
+						throw new Error(
+							"Public token refreshed, please retry search."
+						);
+					}
+					throw new Error(
+						"Authentication/Authorization failed for request."
+					);
+				}
+
+				if (!response.ok) {
+					const errorText = await response.text();
+					throw new Error(
+						`HTTP error! status: ${response.status} - ${errorText}`
+					);
+				}
+				const text = await response.text();
+				return text ? JSON.parse(text) : null;
+			} catch (error) {
+				console.error(`request to ${url} failed`, error);
+				throw error;
+			}
+		},
+		[
+			userAccessToken,
+			publicAccessToken,
+			refreshAccessToken,
+			getPublicAccessToken,
+		]
+	);
+
 	const getUserProfileId = useCallback(async () => {
 		const url = "me";
 		try {
@@ -177,7 +289,8 @@ function App() {
 		} catch (error) {
 			console.error("Error getting user profile ID:", error);
 		}
-	}, [userAccessToken, publicAccessToken]);
+	}, [makeAuthenticatedRequest]); 
+
 
 	useEffect(() => {
 		const storedAccessToken = localStorage.getItem("spotify_access_token");
@@ -194,7 +307,7 @@ function App() {
 		if (code) {
 			exchangeAuthorizationCodeForTokens(code);
 		} else if (storedAccessToken && storedExpiresAt > Date.now()) {
-			setAccessToken(storedAccessToken);
+			setUserAccessToken(storedAccessToken);
 			setRefreshToken(storedRefreshToken);
 			setExpiresAt(storedExpiresAt);
 		} else if (storedRefreshToken) {
@@ -224,94 +337,6 @@ function App() {
 		return () => clearInterval(interval);
 	}, [userAccessToken, expiresAt, refreshToken, refreshAccessToken]);
 
-	async function makeAuthenticatedRequest(url, method, data) {
-		let currentAccessToken = userAccessToken || publicAccessToken;
-
-		const headers = {
-			"Content-Type": "application/json",
-			...(currentAccessToken && {
-				Authorization: `Bearer ${currentAccessToken}`,
-			}),
-		};
-
-		try {
-			const response = await fetch(
-				`http://googleusercontent.com/api.spotify.com/v1/${url}`,
-				{
-					method: method,
-					headers: headers,
-					body: data ? JSON.stringify(data) : undefined,
-				}
-			);
-
-			if (response.status === 401 || response.status === 403) {
-				if (userAccessToken) {
-					console.warn(
-						"User token expired or unauthorized. Attempting refresh."
-					);
-					const newAccessToken = await refreshAccessToken();
-					if (newAccessToken) {
-						currentAccessToken = newAccessToken;
-						headers[
-							"Authorization"
-						] = `Bearer ${currentAccessToken}`;
-						const retryResponse = await fetch(
-							`http://googleusercontent.com/api.spotify.com/v1/${url}`,
-							{
-								method: method,
-								headers: headers,
-								body: data ? JSON.stringify(data) : undefined,
-							}
-						);
-						if (retryResponse.ok) {
-							const text = await retryResponse.text();
-							return text ? JSON.parse(text) : null;
-						} else {
-							const errorText = await retryResponse.text();
-							throw new Error(
-								`HTTP error on retry! status: ${retryResponse.status} - ${errorText}`
-							);
-						}
-					} else {
-						console.error(
-							"Failed to refresh token, user needs to re-authenticate."
-						);
-						setUserAccessToken(null);
-						setRefreshToken(null);
-						setExpiresAt(0);
-						localStorage.clear();
-						throw new Error(
-							"User session expired. Please log in again."
-						);
-					}
-				} else if (publicAccessToken) {
-					console.warn(
-						"Public key token failed. Attempting to get new public token."
-					);
-					setPublicAccessToken(null);
-					await getPublicAccessToken();
-					throw new Error(
-						"Public token refreshed, please retry search."
-					);
-				}
-				throw new Error(
-					"Authentication/Authorization failed for request."
-				);
-			}
-
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(
-					`HTTP error! status: ${response.status} - ${errorText}`
-				);
-			}
-			const text = await response.text();
-			return text ? JSON.parse(text) : null;
-		} catch (error) {
-			console.error(`request to ${url} failed`, error);
-			throw error;
-		}
-	}
 
 	async function spotifyLogin() {
 		const codeVerifier = generateRandomString(64);

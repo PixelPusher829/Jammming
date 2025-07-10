@@ -7,7 +7,8 @@
 		"vercel dev": "vercel dev --listen 127.0.0.1:3000",
 		"build": "vite build",
 		"lint": "eslint .",
-		"preview": "vite preview"
+		"preview": "vite preview",
+		"deploy": "vite build && vercel --prod"
 	},
 	"dependencies": {
 		"react": "^19.1.0",

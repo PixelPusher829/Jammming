@@ -1,11 +1,11 @@
+import { Buffer } from "buffer";
+
 export default async function handler(req, res) {
 	if (req.method !== "POST") {
-		return res
-			.status(405)
-			.json({
-				error: "Method Not Allowed",
-				message: "This endpoint only supports POST requests.",
-			});
+		return res.status(405).json({
+			error: "Method Not Allowed",
+			message: "This endpoint only supports POST requests.",
+		});
 	}
 
 	const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
@@ -13,12 +13,10 @@ export default async function handler(req, res) {
 	const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
 
 	if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
-		return res
-			.status(500)
-			.json({
-				error: "Server configuration error",
-				message: "Missing Spotify API credentials or Redirect URI.",
-			});
+		return res.status(500).json({
+			error: "Server configuration error",
+			message: "Missing Spotify API credentials or Redirect URI.",
+		});
 	}
 
 	const authHeaderString = Buffer.from(
@@ -32,18 +30,25 @@ export default async function handler(req, res) {
 		requestBody.append("grant_type", "authorization_code");
 		requestBody.append("code", req.body.authorizationCode);
 		requestBody.append("redirect_uri", REDIRECT_URI);
+
+		if (req.body.codeVerifier) {
+			requestBody.append("code_verifier", req.body.codeVerifier);
+		} else {
+			return res.status(400).json({
+				error: "Bad Request",
+				message: "Missing code_verifier for PKCE.",
+			});
+		}
 	} else if (req.body && req.body.refreshToken) {
 		requestBody.append("grant_type", "refresh_token");
 		requestBody.append("refresh_token", req.body.refreshToken);
 		isRefresh = true;
 	} else {
-		return res
-			.status(400)
-			.json({
-				error: "Bad Request",
-				message:
-					"Missing authorizationCode or refreshToken in request body.",
-			});
+		return res.status(400).json({
+			error: "Bad Request",
+			message:
+				"Missing authorizationCode or refreshToken in request body.",
+		});
 	}
 
 	try {
