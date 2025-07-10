@@ -11,6 +11,7 @@ export default async function handler(req, res) {
 	const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 	const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 	const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
+	console.log("Backend REDIRECT_URI received:", REDIRECT_URI); // <<< Add this
 
 	if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
 		return res.status(500).json({

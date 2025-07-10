@@ -1,7 +1,0 @@
-{
-	"env": {
-		"SPOTIFY_CLIENT_ID": "6c6e0838753741c98ae1c5d829f8fc10",
-		"SPOTIFY_CLIENT_SECRET": "51d6fc94e1eb418fa90e4cc4b40e7aa0",
-		"SPOTIFY_REDIRECT_URI": "http://127.0.0.1:3000/"
-	}
-}
