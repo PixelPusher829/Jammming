@@ -52,6 +52,12 @@ export default async function handler(req, res) {
 	}
 
 	try {
+		console.log(
+			"Backend redirect URI being sent to Spotify:",
+			REDIRECT_URI
+		);
+		console.log("Backend requestBody toString():", requestBody.toString());
+
 		const spotifyResponse = await fetch(
 			"https://accounts.spotify.com/api/token",
 			{
@@ -60,11 +66,17 @@ export default async function handler(req, res) {
 					"Content-Type": "application/x-www-form-urlencoded",
 					Authorization: `Basic ${authHeaderString}`,
 				},
-				body: requestBody,
+				body: requestBody.toString(),
 			}
 		);
 
 		const data = await spotifyResponse.json();
+
+		if (!spotifyResponse.ok) {
+			console.error("Spotify API Refresh Token Error:", data);
+		} else {
+			console.log("Spotify API Refresh Token Success Response:", data);
+		}
 
 		if (spotifyResponse.ok) {
 			if (isRefresh) {

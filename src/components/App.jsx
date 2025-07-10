@@ -13,7 +13,7 @@ const generateRandomString = (length) => {
 };
 
 const sha256 = async (plain) => {
-	const encoder = new TextEncoder();
+	const encoder = new TextEncoder(); 
 	const data = encoder.encode(plain);
 	return window.crypto.subtle.digest("SHA-256", data);
 };
@@ -35,18 +35,21 @@ function App() {
 	const [tracks, setTracks] = useState([]);
 	const [refreshToken, setRefreshToken] = useState(null);
 	const [expiresAt, setExpiresAt] = useState(0);
+	const [isProcessingAuth, setIsProcessingAuth] = useState(false);
 
+	// --- Authentication Callbacks (no changes here from last version) ---
 	const refreshAccessToken = useCallback(async () => {
+		setIsProcessingAuth(true);
 		const storedRefreshToken = localStorage.getItem(
 			"spotify_refresh_token"
 		);
 
 		if (!storedRefreshToken) {
-			console.log("No refresh token found to refresh.");
 			setUserAccessToken(null);
 			setRefreshToken(null);
 			setExpiresAt(0);
 			localStorage.clear();
+			setIsProcessingAuth(false);
 			return null;
 		}
 
@@ -61,10 +64,6 @@ function App() {
 
 			if (!response.ok) {
 				const errorData = await response.json();
-				console.error(
-					"Error from /api/spotify-auth serverless function (refresh):",
-					errorData
-				);
 				throw new Error(
 					errorData.message || "Failed to refresh Spotify token."
 				);
@@ -75,7 +74,8 @@ function App() {
 
 			setUserAccessToken(data.access_token);
 			setRefreshToken(newRefreshToken);
-			const expiryTime = Date.now() + data.expires_in * 1000;
+			const expiryTime =
+				Date.now() + data.expires_in * 1000 - 5 * 60 * 1000; // Keep this for proactive refresh
 			setExpiresAt(expiryTime);
 
 			localStorage.setItem("spotify_access_token", data.access_token);
@@ -84,16 +84,18 @@ function App() {
 
 			return data.access_token;
 		} catch (error) {
-			console.error("Error refreshing Spotify token:", error);
 			setUserAccessToken(null);
 			setRefreshToken(null);
 			setExpiresAt(0);
 			localStorage.clear();
 			return null;
+		} finally {
+			setIsProcessingAuth(false);
 		}
-	}, []); 
+	}, []);
 
 	const getPublicAccessToken = useCallback(async () => {
+		setIsProcessingAuth(true);
 		try {
 			const response = await fetch("/api/public-auth", {
 				method: "POST",
@@ -104,33 +106,32 @@ function App() {
 
 			if (!response.ok) {
 				const errorData = await response.json();
-				console.error(
-					"Error from /api/public-auth serverless function:",
-					errorData
-				);
 				throw new Error(
-					"Failed to get public access token from serverless function."
+					errorData.message ||
+						"Failed to get public access token from serverless function."
 				);
 			}
 
 			const data = await response.json();
 			setPublicAccessToken(data.access_token);
+			return data.access_token;
 		} catch (error) {
-			console.error(
-				"Error calling serverless function for public token:",
-				error
-			);
+			console.error("Error fetching public access token:", error);
+			setPublicAccessToken(null);
+			return null;
+		} finally {
+			setIsProcessingAuth(false);
 		}
 	}, []);
 
 	const exchangeAuthorizationCodeForTokens = useCallback(async (code) => {
+		setIsProcessingAuth(true);
 		const codeVerifier = localStorage.getItem("code_verifier");
-		localStorage.removeItem("code_verifier");
-
 		if (!codeVerifier) {
 			console.error(
-				"Error: code_verifier not found in localStorage during token exchange."
+				"Final Check: code_verifier still not found, throwing error."
 			);
+			setIsProcessingAuth(false);
 			return;
 		}
 
@@ -148,10 +149,7 @@ function App() {
 
 			if (!response.ok) {
 				const errorData = await response.json();
-				console.error(
-					"Error from /api/spotify-auth serverless function:",
-					errorData
-				);
+				console.error("API response error:", errorData);
 				throw new Error(
 					errorData.message ||
 						"Failed to get Spotify tokens from backend."
@@ -159,9 +157,13 @@ function App() {
 			}
 
 			const data = await response.json();
+
+			localStorage.removeItem("code_verifier");
+
 			setUserAccessToken(data.access_token);
 			setRefreshToken(data.refresh_token);
-			const expiryTime = Date.now() + data.expires_in * 1000;
+			const expiryTime =
+				Date.now() + data.expires_in * 1000 - 5 * 60 * 1000; // Keep this for proactive refresh
 			setExpiresAt(expiryTime);
 
 			localStorage.setItem("spotify_access_token", data.access_token);
@@ -174,11 +176,13 @@ function App() {
 				window.location.pathname
 			);
 		} catch (error) {
-			console.error("Error exchanging code:", error);
+			console.error("Error during token exchange process:", error);
 			setUserAccessToken(null);
 			setRefreshToken(null);
 			setExpiresAt(0);
 			localStorage.clear();
+		} finally {
+			setIsProcessingAuth(false);
 		}
 	}, []);
 
@@ -186,57 +190,28 @@ function App() {
 		async (url, method, data) => {
 			let currentAccessToken = userAccessToken || publicAccessToken;
 
-			const headers = {
+			const headers = (token) => ({
 				"Content-Type": "application/json",
-				...(currentAccessToken && {
-					Authorization: `Bearer ${currentAccessToken}`,
-				}),
+				...(token && { Authorization: `Bearer ${token}` }),
+			});
+
+			const performFetch = async (token) => {
+				return await fetch(`https://api.spotify.com/v1/${url}`, {
+					method: method,
+					headers: headers(token),
+					body: data ? JSON.stringify(data) : undefined,
+				});
 			};
 
 			try {
-				const response = await fetch(
-					`https://api.spotify.com/v1/${url}`,
-					{
-						method: method,
-						headers: headers,
-						body: data ? JSON.stringify(data) : undefined,
-					}
-				);
+				let response = await performFetch(currentAccessToken);
 
 				if (response.status === 401 || response.status === 403) {
 					if (userAccessToken) {
-						console.warn(
-							"User token expired or unauthorized. Attempting refresh."
-						);
 						const newAccessToken = await refreshAccessToken();
 						if (newAccessToken) {
-							currentAccessToken = newAccessToken;
-							headers[
-								"Authorization"
-							] = `Bearer ${currentAccessToken}`;
-							const retryResponse = await fetch(
-								`https://api.spotify.com/v1/${url}`,
-								{
-									method: method,
-									headers: headers,
-									body: data
-										? JSON.stringify(data)
-										: undefined,
-								}
-							);
-							if (retryResponse.ok) {
-								const text = await retryResponse.text();
-								return text ? JSON.parse(text) : null;
-							} else {
-								const errorText = await retryResponse.text();
-								throw new Error(
-									`HTTP error on retry! status: ${retryResponse.status} - ${errorText}`
-								);
-							}
+							response = await performFetch(newAccessToken);
 						} else {
-							console.error(
-								"Failed to refresh token, user needs to re-authenticate."
-							);
 							setUserAccessToken(null);
 							setRefreshToken(null);
 							setExpiresAt(0);
@@ -246,18 +221,19 @@ function App() {
 							);
 						}
 					} else if (publicAccessToken) {
-						console.warn(
-							"Public key token failed. Attempting to get new public token."
-						);
-						setPublicAccessToken(null);
-						await getPublicAccessToken();
+						const newPublicToken = await getPublicAccessToken();
+						if (newPublicToken) {
+							response = await performFetch(newPublicToken);
+						} else {
+							throw new Error(
+								"Failed to acquire new public token."
+							);
+						}
+					} else {
 						throw new Error(
-							"Public token refreshed, please retry search."
+							"Authentication/Authorization failed for request. No active token."
 						);
 					}
-					throw new Error(
-						"Authentication/Authorization failed for request."
-					);
 				}
 
 				if (!response.ok) {
@@ -269,7 +245,7 @@ function App() {
 				const text = await response.text();
 				return text ? JSON.parse(text) : null;
 			} catch (error) {
-				console.error(`request to ${url} failed`, error);
+				console.error("Error in makeAuthenticatedRequest:", error);
 				throw error;
 			}
 		},
@@ -285,14 +261,39 @@ function App() {
 		const url = "me";
 		try {
 			const response = await makeAuthenticatedRequest(url, "GET", null);
-			setUserProfileId(response.id);
+			if (response && response.id) {
+				setUserProfileId(response.id);
+			}
 		} catch (error) {
-			console.error("Error getting user profile ID:", error);
+			console.error("Error fetching user profile ID:", error);
 		}
-	}, [makeAuthenticatedRequest]); 
+	}, [makeAuthenticatedRequest]);
 
-
+	// --- Primary Authentication Effect ---
 	useEffect(() => {
+		if (isProcessingAuth) {
+			return;
+		}
+
+		const urlParams = new URLSearchParams(window.location.search);
+		const code = urlParams.get("code");
+		const hasProcessedCode = sessionStorage.getItem(
+			`processedCode_${code}`
+		);
+
+		// Scenario 1: Initial redirect from Spotify with an auth code
+		if (code && !userAccessToken && !hasProcessedCode) {
+			sessionStorage.setItem(`processedCode_${code}`, "true");
+			exchangeAuthorizationCodeForTokens(code);
+			return; // Exit: Exchange initiated, wait for next render
+		}
+
+		// Scenario 2: User token is already valid in state
+		if (userAccessToken && expiresAt > Date.now()) {
+			return; // Exit: User token is valid, no action needed
+		}
+
+		// --- If no valid userAccessToken in state, try localStorage ---
 		const storedAccessToken = localStorage.getItem("spotify_access_token");
 		const storedRefreshToken = localStorage.getItem(
 			"spotify_refresh_token"
@@ -301,26 +302,42 @@ function App() {
 			localStorage.getItem("spotify_token_expires_at"),
 			10
 		);
-		const urlParams = new URLSearchParams(window.location.search);
-		const code = urlParams.get("code");
 
-		if (code) {
-			exchangeAuthorizationCodeForTokens(code);
-		} else if (storedAccessToken && storedExpiresAt > Date.now()) {
+		// Scenario 3: Load valid user token from localStorage if not in state
+		if (storedAccessToken && storedExpiresAt > Date.now()) {
 			setUserAccessToken(storedAccessToken);
 			setRefreshToken(storedRefreshToken);
 			setExpiresAt(storedExpiresAt);
-		} else if (storedRefreshToken) {
+			return; // Exit: Token loaded from storage, state updated
+		}
+
+		// Scenario 4: Refresh expired user token from localStorage
+		if (
+			storedRefreshToken &&
+			(!userAccessToken || expiresAt <= Date.now())
+		) {
 			refreshAccessToken();
-		} else {
+			return; // Exit: Refresh initiated, wait for next render
+		}
+
+		// Scenario 5: If no user tokens (neither in state nor localStorage), get public token
+		if (!publicAccessToken) {
 			getPublicAccessToken();
+			// No return here, as publicAccessToken update won't necessarily stop the effect immediately
+			// and it might not prevent other state changes from causing a re-run.
+			// The isProcessingAuth guard helps.
 		}
 	}, [
 		exchangeAuthorizationCodeForTokens,
 		refreshAccessToken,
 		getPublicAccessToken,
+		userAccessToken, // Crucial dependency
+		publicAccessToken, // Crucial dependency
+		expiresAt, // Crucial dependency
+		isProcessingAuth, // Crucial dependency
 	]);
 
+	// --- Other Effects (remain the same) ---
 	useEffect(() => {
 		if (userAccessToken && !userProfileId) {
 			getUserProfileId();
@@ -337,7 +354,6 @@ function App() {
 		return () => clearInterval(interval);
 	}, [userAccessToken, expiresAt, refreshToken, refreshAccessToken]);
 
-
 	async function spotifyLogin() {
 		const codeVerifier = generateRandomString(64);
 		const hashed = await sha256(codeVerifier);
@@ -346,7 +362,11 @@ function App() {
 			"user-read-private user-read-email playlist-modify-private playlist-modify-public";
 		const authUrl = new URL("https://accounts.spotify.com/authorize");
 
-		window.localStorage.setItem("code_verifier", codeVerifier);
+		try {
+			window.localStorage.setItem("code_verifier", codeVerifier);
+		} catch (e) {
+			console.error("Error storing code_verifier in localStorage:", e);
+		}
 
 		const params = {
 			response_type: "code",
@@ -362,6 +382,9 @@ function App() {
 	}
 
 	async function searchSpotify(searchTerm) {
+		if (!searchTerm || searchTerm.trim() === "") {
+			return []; // Prevent searching with empty query
+		}
 		const endpoint = "search";
 		const type = "track";
 		const limit = 10;
@@ -378,12 +401,15 @@ function App() {
 			}));
 			return tracks;
 		} else {
-			console.log("No tracks found.");
 			return [];
 		}
 	}
 
 	async function handleSearch(searchTerm) {
+		if (!searchTerm || searchTerm.trim() === "") {
+			setTracks([]);
+			return;
+		}
 		const trackData = await searchSpotify(searchTerm);
 
 		setTracks((prev) => {
